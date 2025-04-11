@@ -3,7 +3,6 @@ import fetch from 'node-fetch';
 export default async function handler(req, res) {
   const { stream_id } = req.query;
 
-  // If no stream_id provided, return an error
   if (!stream_id) {
     return res.status(400).json({ error: 'Missing stream_id' });
   }
@@ -36,13 +35,24 @@ export default async function handler(req, res) {
       }
     );
 
-    const json = await response.json();
-    const streamUrl = json?.js?.cmd; // Get the dynamic URL from the response
+    // Log status code and body for debugging
+    console.log('Response Status:', response.status);
+    const text = await response.text();  // Get the full response body as text
+    console.log('Response Body:', text);
 
-    if (!streamUrl) throw new Error('Stream URL not found from Stalker');
+    // Check if the response is JSON, and parse it if so
+    try {
+      const json = JSON.parse(text);
+      const streamUrl = json?.js?.cmd;
 
-    // Redirect to the actual stream link
-    return res.writeHead(302, { Location: streamUrl }).end();
+      if (!streamUrl) throw new Error('Stream URL not found from Stalker');
+
+      // Redirect to the actual stream link
+      return res.writeHead(302, { Location: streamUrl }).end();
+    } catch (err) {
+      // If the response is not JSON, return the raw HTML response for debugging
+      return res.status(500).json({ error: 'Invalid JSON response', details: text });
+    }
 
   } catch (err) {
     console.error(err);
