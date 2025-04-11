@@ -1,93 +1,43 @@
 import fetch from 'node-fetch';
 
-const stalkerHost = 'http://tv.ace4k.me';
-const mac = '00:1A:79:00:00:76';
-const serialNumber = '2AD07B43BA39F';
-const deviceId = '908760383108EC7009D9C314299E66262AF35A1192FF72A26157C57A95B06885';
+const stalkerURL = 'http://tv.ace4k.me/stalker_portal/server/load.php'; const mac = '00:1A:79:00:00:76'; const serial = '2AD07B43BA39F'; const device_id = '908760383108EC7009D9C314299E66262AF35A1192FF72A26157C57A95B06885'; const userAgent = 'Mozilla/5.0 (QtEmbedded; U; Linux; C)';
 
-async function getToken() {
-  const headers = {
-    'User-Agent': 'Mozilla/5.0 (QtEmbedded; U; Linux; C)',
-    'Accept': '*/*',
-    'Connection': 'Keep-Alive',
-    'X-User-Agent': 'Model: MAG254; Link: Ethernet',
-    'Authorization': '',
-    'Cookie': '',
-  };
+async function getAuthHeaders(token) { return { 'User-Agent': userAgent, 'Accept': '/', 'Connection': 'Keep-Alive', 'X-User-Agent': 'Model: MAG254; Link: Ethernet', 'Authorization': Bearer ${token} }; }
 
-  const response = await fetch(`${stalkerHost}/stalker_portal/server/load.php?type=stb&action=handshake&token=&prehash=false&JsHttpRequest=1-xml`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      action: 'handshake',
-      type: 'stb',
-      prehash: false
-    }),
-  });
+async function stalkerLogin() { const headers = { 'User-Agent': userAgent, 'Accept': '/', 'Connection': 'Keep-Alive', 'X-User-Agent': 'Model: MAG254; Link: Ethernet', 'Cookie': mac=${mac}; stb_lang=en; timezone=Asia/Dhaka };
 
-  const data = await response.json();
-  return data.js.token;
-}
+const body = new URLSearchParams(); body.append('type', 'stb'); body.append('action', 'handshake'); body.append('token', ''); body.append('prehash', ''); body.append('JsHttpRequest', '1-xml');
 
-async function getProfile(token) {
-  const headers = {
-    'Authorization': `Bearer ${token}`,
-    'Cookie': `mac=${mac}; stb_lang=en;`,
-    'User-Agent': 'Mozilla/5.0 (QtEmbedded; U; Linux; C)',
-    'X-User-Agent': 'Model: MAG254; Link: Ethernet',
-    'Referer': `${stalkerHost}/stalker_portal/c/`,
-  };
+const res = await fetch(${stalkerURL}?type=stb&action=handshake&token=&prehash=&JsHttpRequest=1-xml, { method: 'GET', headers, }); const json = await res.json(); return json.js.token; }
 
-  await fetch(`${stalkerHost}/stalker_portal/server/load.php?type=stb&action=do_auth&mac=${mac}&sn=${serialNumber}&device_id=${deviceId}&JsHttpRequest=1-xml`, {
-    method: 'POST',
-    headers,
-  });
-}
+export default async function handler(req, res) { const { channel } = req.query;
 
-async function getStreamUrl(channel, token) {
-  const headers = {
-    'Authorization': `Bearer ${token}`,
-    'Cookie': `mac=${mac}; stb_lang=en;`,
-    'User-Agent': 'Mozilla/5.0 (QtEmbedded; U; Linux; C)',
-    'X-User-Agent': 'Model: MAG254; Link: Ethernet',
-    'Referer': `${stalkerHost}/stalker_portal/c/`,
-  };
+if (!channel) { return res.status(400).json({ error: 'Channel not specified' }); }
 
-  const body = new URLSearchParams();
-  body.append('cmd', `ffrt http://localhost/${channel}`);
-  body.append('JsHttpRequest', '1-xml');
+try { const token = await stalkerLogin(); const headers = await getAuthHeaders(token);
 
-  const response = await fetch(`${stalkerHost}/stalker_portal/server/load.php?type=itv&action=create_link&forced_storage=false&download=false`, {
+const body = new URLSearchParams();
+body.append('cmd', `ffrt http://localhost/${channel}`);
+body.append('JsHttpRequest', '1-xml');
+
+const response = await fetch(
+  `${stalkerURL}?type=itv&action=create_link&forced_storage=false&download=false`,
+  {
     method: 'POST',
     headers,
     body,
-  });
+  }
+);
 
-  const json = await response.json();
-  return json.js?.cmd || null;
+const data = await response.json();
+const streamUrl = data?.js?.cmd;
+
+if (!streamUrl) {
+  throw new Error('Stream URL not found');
 }
 
-export default async function handler(req, res) {
-  const { channel } = req.query;
+res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+res.status(200).send(`#EXTM3U\n#EXTINF:-1,${channel}\n${streamUrl}`);
 
-  if (!channel) {
-    return res.status(400).json({ error: 'Channel not specified' });
-  }
+} catch (error) { res.status(500).json({ error: error.message }); } }
 
-  try {
-    const token = await getToken();
-    await getProfile(token);
-    const streamUrl = await getStreamUrl(channel, token);
-
-    if (!streamUrl) {
-      throw new Error('Stream URL not found');
-    }
-
-    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-    res.status(200).send(`#EXTM3U
-#EXTINF:-1,${channel}
-${streamUrl}`);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-                               }
