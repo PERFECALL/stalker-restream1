@@ -24,6 +24,7 @@ export default async function handler(req, res) {
   body.append('JsHttpRequest', '1-xml');
 
   try {
+    // Step 1: Get dynamic m3u8 URL from stalker portal
     const response = await fetch(
       'http://tv.ace4k.me/stalker_portal/server/load.php?type=itv&action=create_link&forced_storage=false&download=false',
       {
@@ -36,13 +37,20 @@ export default async function handler(req, res) {
     const json = await response.json();
     const streamUrl = json?.js?.cmd;
 
-    if (!streamUrl) throw new Error('Stream URL not found from Stalker');
+    if (!streamUrl) {
+      throw new Error('Stream URL not found from stalker portal');
+    }
 
-    // Redirect to actual stream
-    return res.writeHead(302, { Location: streamUrl }).end();
+    // Step 2: Fetch actual m3u8 content
+    const m3uResponse = await fetch(streamUrl);
+    const m3uContent = await m3uResponse.text();
+
+    // Step 3: Return m3u8 content as response
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.status(200).send(m3uContent);
 
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 }
