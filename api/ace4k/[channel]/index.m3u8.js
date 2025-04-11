@@ -1,43 +1,49 @@
 import fetch from 'node-fetch';
 
-const stalkerURL = 'http://tv.ace4k.me/stalker_portal/server/load.php'; const mac = '00:1A:79:00:00:76'; const serial = '2AD07B43BA39F'; const device_id = '908760383108EC7009D9C314299E66262AF35A1192FF72A26157C57A95B06885'; const userAgent = 'Mozilla/5.0 (QtEmbedded; U; Linux; C)';
+export default async function handler(req, res) {
+  const { channel } = req.query;
 
-async function getAuthHeaders(token) { return { 'User-Agent': userAgent, 'Accept': '/', 'Connection': 'Keep-Alive', 'X-User-Agent': 'Model: MAG254; Link: Ethernet', 'Authorization': Bearer ${token} }; }
-
-async function stalkerLogin() { const headers = { 'User-Agent': userAgent, 'Accept': '/', 'Connection': 'Keep-Alive', 'X-User-Agent': 'Model: MAG254; Link: Ethernet', 'Cookie': mac=${mac}; stb_lang=en; timezone=Asia/Dhaka };
-
-const body = new URLSearchParams(); body.append('type', 'stb'); body.append('action', 'handshake'); body.append('token', ''); body.append('prehash', ''); body.append('JsHttpRequest', '1-xml');
-
-const res = await fetch(${stalkerURL}?type=stb&action=handshake&token=&prehash=&JsHttpRequest=1-xml, { method: 'GET', headers, }); const json = await res.json(); return json.js.token; }
-
-export default async function handler(req, res) { const { channel } = req.query;
-
-if (!channel) { return res.status(400).json({ error: 'Channel not specified' }); }
-
-try { const token = await stalkerLogin(); const headers = await getAuthHeaders(token);
-
-const body = new URLSearchParams();
-body.append('cmd', `ffrt http://localhost/${channel}`);
-body.append('JsHttpRequest', '1-xml');
-
-const response = await fetch(
-  `${stalkerURL}?type=itv&action=create_link&forced_storage=false&download=false`,
-  {
-    method: 'POST',
-    headers,
-    body,
+  if (!channel) {
+    return res.status(400).json({ error: 'Channel not specified' });
   }
-);
 
-const data = await response.json();
-const streamUrl = data?.js?.cmd;
+  try {
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (QtEmbedded; U; Linux; C)',
+      'Accept': '*/*',
+      'Connection': 'Keep-Alive',
+      'X-User-Agent': 'Model: MAG254; Link: Ethernet',
+      'Cookie': 'mac=00:1A:79:00:00:76; stb_lang=en; timezone=Asia/Dhaka'
+    };
 
-if (!streamUrl) {
-  throw new Error('Stream URL not found');
+    const body = new URLSearchParams();
+    body.append('cmd', `ffrt http://localhost/${channel}`);
+    body.append('JsHttpRequest', '1-xml');
+
+    const response = await fetch(
+      'http://tv.ace4k.me/stalker_portal/server/load.php?type=itv&action=create_link&forced_storage=false&download=false',
+      {
+        method: 'POST',
+        headers,
+        body
+      }
+    );
+
+    const contentType = response.headers.get("content-type");
+    if (!contentType.includes("application/json")) {
+      const text = await response.text();
+      throw new Error(`Unexpected content: ${text.slice(0, 100)}`);
+    }
+
+    const data = await response.json();
+    const streamUrl = data?.js?.cmd;
+
+    if (!streamUrl) throw new Error('Stream URL not found');
+
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.status(200).send(`#EXTM3U\n#EXTINF:-1,${channel}\n${streamUrl}`);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
 }
-
-res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-res.status(200).send(`#EXTM3U\n#EXTINF:-1,${channel}\n${streamUrl}`);
-
-} catch (error) { res.status(500).json({ error: error.message }); } }
-
