@@ -12,11 +12,13 @@ export default async function handler(req, res) {
   const deviceId = '908760383108EC7009D9C314299E66262AF35A1192FF72A26157C57A95B06885';
 
   const headers = {
-    'User-Agent': 'Mozilla/5.0 (QtEmbedded; U; Linux; C)',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
     'Accept': '*/*',
-    'Connection': 'Keep-Alive',
-    'X-User-Agent': 'Model: MAG254; Link: Ethernet',
-    'Cookie': `mac=${mac}; stb_lang=en; timezone=Asia/Dhaka`
+    'Connection': 'keep-alive',
+    'Cookie': 'cookie_name=cookie_value;', // Add any necessary cookies here if you have them
+    'X-Requested-With': 'XMLHttpRequest',
+    'Referer': 'http://tv.ace4k.me/stalker_portal/',
+    'Origin': 'http://tv.ace4k.me',
   };
 
   const body = new URLSearchParams();
@@ -33,10 +35,16 @@ export default async function handler(req, res) {
       }
     );
 
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
     const json = await response.json();
     const streamUrl = json?.js?.cmd;
 
-    if (!streamUrl) throw new Error('Stream URL not found from Stalker');
+    if (!streamUrl) {
+      throw new Error('Stream URL not found from Stalker');
+    }
 
     // Return the actual stream URL as a direct .m3u8 link for playback
     res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
